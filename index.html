@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Interactive Subtitles Overlay with Video Click and Spacebar Pause</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .video-container {
+      position: relative;
+      width: 800px;
+      max-width: 100%;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      cursor: pointer;
+    }
+
+    #subtitle {
+      position: absolute;
+      bottom: 40px;
+      left: 0;
+      width: 100%;
+      padding: 10px 20px;
+      font-size: 1.3rem;
+      line-height: 1.4;
+      text-align: center;
+      background-color: rgba(0, 0, 0, 0.6);
+      color: white;
+      pointer-events: none;
+      user-select: none;
+      box-sizing: border-box;
+    }
+
+    #subtitle .highlight {
+      color: yellow;
+      cursor: pointer;
+      position: relative;
+      pointer-events: auto;
+      user-select: text;
+    }
+
+    .tooltip {
+      visibility: hidden;
+      background-color: #333;
+      color: #fff;
+      text-align: left;
+      border-radius: 6px;
+      padding: 5px;
+      position: absolute;
+      z-index: 10;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      opacity: 0;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    #subtitle .highlight:hover .tooltip,
+    #subtitle .highlight.clicked .tooltip {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+
+<div class="video-container">
+  <video id="video" controls crossorigin="anonymous">
+    <source src="OAV4.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+  </video>
+
+  <div id="subtitle"></div>
+</div>
+
+<script>
+  const video = document.getElementById("video");
+  const subtitleBox = document.getElementById("subtitle");
+
+  const srtUrl = "OAV4.srt";
+
+  const tooltipDictionary = {
+    "kale borroka": "Meaning street fight or riot, referring to the violent acts carried out by Basque nationalists.",
+  };
+
+  let subtitles = [];
+
+  async function fetchSRT(url) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch subtitles");
+      const text = await response.text();
+      subtitles = parseSRT(text);
+    } catch (err) {
+      console.error("Error loading SRT file:", err);
+    }
+  }
+
+  function parseSRT(data) {
+    const srt = data.trim().split(/\r?\n\r?\n/);
+    return srt.map(block => {
+      const lines = block.split(/\r?\n/);
+      const time = lines[1];
+      const [start, end] = time.split(" --> ").map(t => toSeconds(t.trim()));
+      const text = lines.slice(2).join(" ");
+      return { start, end, text };
+    });
+  }
+
+  function toSeconds(timeStr) {
+    const [h, m, s] = timeStr.split(":");
+    const [secs, ms] = s.split(",");
+    return (
+      parseInt(h) * 3600 +
+      parseInt(m) * 60 +
+      parseInt(secs) +
+      parseInt(ms) / 1000
+    );
+  }
+
+  function renderSubtitle(currentTime) {
+    const current = subtitles.find(
+      sub => currentTime >= sub.start && currentTime <= sub.end
+    );
+    if (current) {
+      subtitleBox.innerHTML = processSubtitle(current.text);
+    } else {
+      subtitleBox.innerHTML = "";
+    }
+  }
+
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function processSubtitle(text) {
+    let processed = text;
+    const sortedPhrases = Object.keys(tooltipDictionary).sort((a, b) => b.length - a.length);
+
+    sortedPhrases.forEach(phrase => {
+      const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
+      processed = processed.replace(regex, match => {
+        return `<span class="highlight" tabindex="0">${match}<span class="tooltip">${tooltipDictionary[phrase]}</span></span>`;
+      });
+    });
+
+    return processed;
+  }
+
+  subtitleBox.addEventListener("click", event => {
+    const highlight = event.target.closest(".highlight");
+    if (!highlight) return;
+
+    subtitleBox.querySelectorAll(".highlight.clicked").forEach(el => {
+      if (el !== highlight) el.classList.remove("clicked");
+    });
+
+    const wasClicked = highlight.classList.contains("clicked");
+    if (wasClicked) {
+      highlight.classList.remove("clicked");
+      video.play();
+    } else {
+      highlight.classList.add("clicked");
+      video.pause();
+    }
+  });
+
+  document.addEventListener("click", event => {
+    if (!subtitleBox.contains(event.target)) {
+      subtitleBox.querySelectorAll(".highlight.clicked").forEach(el => {
+        el.classList.remove("clicked");
+      });
+    }
+  });
+
+  video.addEventListener("timeupdate", () => {
+    renderSubtitle(video.currentTime);
+  });
+
+  // Pause/play by clicking video
+  video.addEventListener("click", () => {
+    if (video.paused) video.play();
+    else video.pause();
+  });
+
+  // Pause/play with spacebar
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space" || e.keyCode === 32) {
+      e.preventDefault();
+      if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        if (video.paused) video.play();
+        else video.pause();
+      }
+    }
+  });
+
+  fetchSRT(srtUrl);
+</script>
+
+</body>
+</html>
