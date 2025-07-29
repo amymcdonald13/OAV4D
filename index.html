@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Interactive Subtitles Overlay with Video Click and Spacebar Pause</title>
+  <title>OAV4D</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -50,7 +50,7 @@
     }
 
     .tooltip {
-      visibility: hidden;
+      display: none;
       background-color: #333;
       color: #fff;
       text-align: left;
@@ -61,18 +61,13 @@
       bottom: 125%;
       left: 50%;
       transform: translateX(-50%);
-      opacity: 0;
-      transition: opacity 0.3s;
       white-space: nowrap;
-      pointer-events: none;
-      user-select: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     }
 
-    #subtitle .highlight:hover .tooltip,
-    #subtitle .highlight.clicked .tooltip {
-      visibility: visible;
-      opacity: 1;
-      pointer-events: auto;
+    .highlight:hover .tooltip,
+    .highlight.clicked .tooltip {
+      display: block;
     }
   </style>
 </head>
@@ -94,7 +89,7 @@
   const srtUrl = "OAV4.srt";
 
   const tooltipDictionary = {
-    "kale borroka": "Meaning street fight or riot, usually carried out by Basque nationalists.",
+    "kale borroka": "Meaning street fight or riot, usually carried out by Basque nationalists."
   };
 
   let subtitles = [];
@@ -116,7 +111,7 @@
       const lines = block.split(/\r?\n/);
       const time = lines[1];
       const [start, end] = time.split(" --> ").map(t => toSeconds(t.trim()));
-      const text = lines.slice(2).join(" ");
+      const text = lines.slice(2).join("\n"); // Preserve line breaks
       return { start, end, text };
     });
   }
@@ -132,34 +127,60 @@
     );
   }
 
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function processSubtitle(text) {
+    const lines = text.split("\n");
+    const processedLines = lines.map(line => {
+      let processedLine = line;
+      const sortedPhrases = Object.keys(tooltipDictionary).sort((a, b) => b.length - a.length);
+
+      sortedPhrases.forEach(phrase => {
+        const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
+        processedLine = processedLine.replace(regex, match => {
+          return `<span class="highlight" tabindex="0">${match}<span class="tooltip">${tooltipDictionary[phrase]}</span></span>`;
+        });
+      });
+
+      return processedLine;
+    });
+
+    return processedLines.join("<br>");
+  }
+
   function renderSubtitle(currentTime) {
     const current = subtitles.find(
       sub => currentTime >= sub.start && currentTime <= sub.end
     );
     if (current) {
       subtitleBox.innerHTML = processSubtitle(current.text);
+      bindTooltipHoverHandlers();
     } else {
       subtitleBox.innerHTML = "";
     }
   }
 
-  function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
+  function bindTooltipHoverHandlers() {
+  subtitleBox.querySelectorAll(".highlight").forEach(span => {
+    // Ensure we don't stack multiple event listeners
+    span.removeEventListener("mouseenter", span._mouseenterHandler);
+    span.removeEventListener("mouseleave", span._mouseleaveHandler);
 
-  function processSubtitle(text) {
-    let processed = text;
-    const sortedPhrases = Object.keys(tooltipDictionary).sort((a, b) => b.length - a.length);
+    span._mouseenterHandler = () => {
+      video.pause();
+    };
 
-    sortedPhrases.forEach(phrase => {
-      const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
-      processed = processed.replace(regex, match => {
-        return `<span class="highlight" tabindex="0">${match}<span class="tooltip">${tooltipDictionary[phrase]}</span></span>`;
-      });
-    });
+    span._mouseleaveHandler = () => {
+      video.play();
+    };
 
-    return processed;
-  }
+    span.addEventListener("mouseenter", span._mouseenterHandler);
+    span.addEventListener("mouseleave", span._mouseleaveHandler);
+  });
+}
+
 
   subtitleBox.addEventListener("click", event => {
     const highlight = event.target.closest(".highlight");
@@ -191,13 +212,11 @@
     renderSubtitle(video.currentTime);
   });
 
-  // Pause/play by clicking video
   video.addEventListener("click", () => {
     if (video.paused) video.play();
     else video.pause();
   });
 
-  // Pause/play with spacebar
   document.addEventListener("keydown", e => {
     if (e.code === "Space" || e.keyCode === 32) {
       e.preventDefault();
